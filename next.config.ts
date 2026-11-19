@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output:"standalone",
   cacheComponents: true,
   partialPrefetching: true,
   // PDF 通过 Server Action 上传。默认请求体上限是 1MB，超过后浏览器只会看到 Failed to fetch。
