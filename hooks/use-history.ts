@@ -32,5 +32,13 @@ export function useHistory() {
     );
   }, []);
 
-  return { records, addRecord, toggleFavorite };
+  const removeRecord = useCallback((id: string) => {
+    setRecords((current) => current.filter((record) => record.id !== id));
+  }, []);
+
+  const clearRecords = useCallback(() => {
+    setRecords([]);
+  }, []);
+
+  return { records, addRecord, toggleFavorite, removeRecord, clearRecords };
 }

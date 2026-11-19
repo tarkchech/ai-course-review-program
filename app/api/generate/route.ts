@@ -4,9 +4,23 @@ export const maxDuration = 60;
 
 const MAX_INPUT_CHARS = 24000;
 
-const PROMPTS = {
-  outline: `你是一位严谨的大学课程助教。请根据用户提供的课程文本，提取期末复习用的核心考点大纲。
-要求：
+type ReviewStyle = "normal" | "expert" | "exam";
+
+const BASE_ROLE = "你是一个资深的大模型复习导师。";
+
+const OUTLINE_STYLE: Record<ReviewStyle, string> = {
+  normal: "请通俗易懂地提炼核心概念，按由浅入深的顺序生成大纲，不需要太深奥。",
+  expert: "请深入剖析底层逻辑和公式推导，列出易混淆概念对比，并补充工程应用场景。",
+  exam: "请只提取历年考试高频考点，预测大题方向，并列出必须背诵的简答题要点。",
+};
+
+const QUIZ_STYLE: Record<ReviewStyle, string> = {
+  normal: "生成 5 道基础选择题，侧重概念定义，解析要大白话。",
+  expert: "生成 3 道复杂选择题和 2 道计算/简答题，侧重综合应用。",
+  exam: "模拟期末考试卷，生成包含选择题、填空题和综合计算题的混合卷，分值设定合理。",
+};
+
+const OUTLINE_FORMAT = `通用要求：
 1. 使用 Markdown（## / ### / - ）组织内容
 2. 提取概念、定义、对比、公式和流程步骤
 3. 每个考点用 1-3 句说明为什么重要、考试可能怎么考
@@ -17,8 +31,18 @@ const PROMPTS = {
 
 | 概念 | 说明 |
 | --- | --- |
-| 进程 | 资源分配的基本单位 |`,
-} as const;
+| 进程 | 资源分配的基本单位 |`;
+
+const QUIZ_JSON_RULES = `必须输出纯 JSON 数组格式，不要包含任何 Markdown 代码块标记（如 \`\`\`json ），不要输出 JSON 以外的任何废话。
+JSON 数组中的每个对象必须严格包含以下字段：
+"type": 必须是 "choice"、"fill_blank" 或 "calculation" 三者之一。
+"question": 题目内容。如需标注分值，直接写在题干里，例如「（10分）」，不要新增字段。
+"options": 仅当 type 为 "choice" 时才有此字段，是一个包含 4 个字符串的数组。其他题型该字段为 null。
+"answer": 标准答案。选择题的 answer 只能是 A、B、C 或 D，不要把选项字母放进公式。
+"explanation": 详细解析（计算题需给出解题步骤）。
+极其重要的格式要求：question、options、answer、explanation 里只要出现数学公式、变量、下标或上标（包括平方），必须严格使用 LaTeX，并用 $ 包裹。不要使用没有定界符的纯文本，也不要使用 \\( \\) ，因为反斜杠会破坏 JSON。
+例如：不要写 I_D = I_DSS(1 - U_GS/U_GS(off))^2，必须写成 $I_D = I_{DSS}(1 - U_{GS}/U_{GS(off)})^2$。不要写 UGS=-2V，必须写成 $U_{GS}=-2V$。
+如果不使用 $ 包裹公式，前端将无法正确显示。`;
 
 type QuizType = "choice" | "fill_blank" | "calculation";
 
@@ -36,48 +60,38 @@ function readAttemptCount(value: unknown) {
   return Math.min(Math.floor(count), 99);
 }
 
+function readReviewStyle(value: unknown): ReviewStyle {
+  if (value === "normal" || value === "expert" || value === "exam") return value;
+  return "normal";
+}
+
 function quizDifficultyInstruction(attemptCount: number) {
   if (attemptCount <= 1) return "生成基础概念题，难度适中。";
   return "用户已进行过复习，请生成更具迷惑性的进阶题、综合应用题，或者需要多步计算的高难度题目。请绝对不要与之前的常考基础题重复，尝试从课件的边角料或更深层的逻辑出题。";
 }
 
-function buildOutlineSystemPrompt(attemptCount: number) {
-  if (attemptCount <= 1) return PROMPTS.outline;
-  return `${PROMPTS.outline}
-8. 用户已经生成过大纲。请生成更详细的逻辑推导、或者补充更多的课外拓展延伸。延伸内容请单独标注为「拓展」，不要伪装成课件原文。`;
+function buildOutlineSystemPrompt(attemptCount: number, reviewStyle: ReviewStyle) {
+  const extra =
+    attemptCount > 1
+      ? "\n8. 用户已经生成过大纲。请生成更详细的逻辑推导、或者补充更多的课外拓展延伸。延伸内容请单独标注为「拓展」，不要伪装成课件原文。"
+      : "";
+  return `${BASE_ROLE}
+${OUTLINE_STYLE[reviewStyle]}
+${OUTLINE_FORMAT}${extra}`;
 }
 
-function buildQuizSystemPrompt(text: string, attemptCount: number) {
-  return `你是一个资深的大学期末复习导师。请根据我提供的课件文本，生成一份包含多种题型的复习测验。
-要求：
-
-1. 至少包含5道选择题、5道填空题和1道计算题/简答题。
-
-难度要求：${quizDifficultyInstruction(attemptCount)}
-
-2. 必须输出纯 JSON 数组格式，不要包含任何 Markdown 代码块标记（如 \`\`\`json ），不要输出 JSON 以外的任何废话。
-
-3. JSON 数组中的每个对象必须严格包含以下字段：
-
-	"type": 必须是 "choice"、"fill_blank" 或 "calculation" 三者之一。
-
-	"question": 题目内容。
-
-	"options": 仅当 type 为 "choice" 时才有此字段，是一个包含 4 个字符串的数组。其他题型该字段为 null。
-
-	"answer": 标准答案。选择题的 answer 只能是 A、B、C 或 D，不要把选项字母放进公式。
-
-	"explanation": 详细解析（计算题需给出解题步骤）。
-
-4. 极其重要的格式要求：question、options、answer、explanation 里只要出现数学公式、变量、下标或上标（包括平方），必须严格使用 LaTeX，并用 $ 包裹。不要使用没有定界符的纯文本，也不要使用 \( \) ，因为反斜杠会破坏 JSON。
-例如：不要写 I_D = I_DSS(1 - U_GS/U_GS(off))^2，必须写成 $I_D = I_{DSS}(1 - U_{GS}/U_{GS(off)})^2$。不要写 UGS=-2V，必须写成 $U_{GS}=-2V$。
-如果不使用 $ 包裹公式，前端将无法正确显示。
+function buildQuizSystemPrompt(text: string, attemptCount: number, reviewStyle: ReviewStyle) {
+  const repeat =
+    attemptCount > 1 ? `\n难度要求：${quizDifficultyInstruction(attemptCount)}` : "";
+  return `${BASE_ROLE}
+请根据课件文本生成复习测验。出题要求：${QUIZ_STYLE[reviewStyle]}${repeat}
+${QUIZ_JSON_RULES}
 
 课件内容如下：
 ${text}`;
 }
 
-function parseQuizPayload(raw: string): QuizItem[] {
+function parseQuizPayload(raw: string, reviewStyle: ReviewStyle): QuizItem[] {
   try {
     const sliced = extractJsonArray(raw);
     const candidates = [sliced, sliced.replace(/,\s*([}\]])/g, "$1")];
@@ -85,7 +99,7 @@ function parseQuizPayload(raw: string): QuizItem[] {
 
     for (const candidate of candidates) {
       try {
-        return normalizeQuizItems(parseJsonValue(candidate));
+        return normalizeQuizItems(parseJsonValue(candidate), reviewStyle);
       } catch (error) {
         lastError = error;
       }
@@ -114,7 +128,13 @@ function parseJsonValue(text: string): unknown {
   return value;
 }
 
-function normalizeQuizItems(parsed: unknown): QuizItem[] {
+function quizShapeIsShort(style: ReviewStyle, counts: Record<QuizType, number>) {
+  if (style === "normal") return counts.choice < 5;
+  if (style === "expert") return counts.choice < 3 || counts.calculation < 2;
+  return counts.choice < 1 || counts.fill_blank < 1 || counts.calculation < 1;
+}
+
+function normalizeQuizItems(parsed: unknown, reviewStyle: ReviewStyle): QuizItem[] {
   if (!Array.isArray(parsed)) {
     throw new Error("测验结果不是 JSON 数组");
   }
@@ -128,8 +148,8 @@ function normalizeQuizItems(parsed: unknown): QuizItem[] {
     fill_blank: items.filter((item) => item.type === "fill_blank").length,
     calculation: items.filter((item) => item.type === "calculation").length,
   };
-  if (counts.choice < 5 || counts.fill_blank < 5 || counts.calculation < 1) {
-    console.warn("Quiz question counts are below the requested minimum:", counts);
+  if (quizShapeIsShort(reviewStyle, counts)) {
+    console.warn("Quiz question counts are below the requested style:", reviewStyle, counts);
   }
   return items;
 }
@@ -216,10 +236,16 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = (await req.json()) as { text?: unknown; mode?: unknown; attemptCount?: unknown };
+    const body = (await req.json()) as {
+      text?: unknown;
+      mode?: unknown;
+      attemptCount?: unknown;
+      reviewStyle?: unknown;
+    };
     const text = typeof body.text === "string" ? body.text.trim() : "";
     const mode = normalizeMode(body.mode);
     const attemptCount = readAttemptCount(body.attemptCount);
+    const reviewStyle = readReviewStyle(body.reviewStyle);
 
     if (!text) {
       return new Response("请先提供课程文本", { status: 400 });
@@ -241,14 +267,14 @@ export async function POST(req: Request) {
     const messages =
       mode === "outline"
         ? [
-            { role: "system" as const, content: buildOutlineSystemPrompt(attemptCount) },
+            { role: "system" as const, content: buildOutlineSystemPrompt(attemptCount, reviewStyle) },
             {
               role: "user" as const,
               content: `请根据下面的课程材料提取核心考点大纲：\n\n${clipped}`,
             },
           ]
         : [
-            { role: "system" as const, content: buildQuizSystemPrompt(clipped, attemptCount) },
+            { role: "system" as const, content: buildQuizSystemPrompt(clipped, attemptCount, reviewStyle) },
             { role: "user" as const, content: "请只输出 JSON 数组。" },
           ];
 
@@ -261,7 +287,7 @@ export async function POST(req: Request) {
       const raw = completion.choices[0]?.message?.content ?? "";
 
       try {
-        return Response.json(parseQuizPayload(raw));
+        return Response.json(parseQuizPayload(raw, reviewStyle));
       } catch (error) {
         console.error("Quiz JSON parse failed:", error);
         return new Response(error instanceof Error ? error.message : "测验结果解析失败", {

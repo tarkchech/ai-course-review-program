@@ -8,7 +8,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -126,22 +126,32 @@
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif,
+      "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   }
 }
 
-/* Markdown 代码块：浅色提示板，避免默认的深色终端背景 */
+/* Markdown 代码块：浅色提示板，深色模式下换成深底浅字 */
 .prose {
   --tw-prose-pre-bg: var(--color-blue-50);
   --tw-prose-pre-code: var(--color-stone-700);
 }
 
+.dark .prose {
+  --tw-prose-pre-bg: var(--color-slate-800);
+  --tw-prose-pre-code: var(--color-slate-100);
+}
+
+.dark .katex {
+  color: #f8fafc;
+}
+
 .prose :where(pre):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-  @apply rounded-xl bg-blue-50 px-5 py-4 text-stone-700;
+  @apply rounded-xl bg-blue-50 px-5 py-4 text-stone-700 dark:bg-slate-800 dark:text-slate-100;
 }
 
 .prose :where(pre code):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-  @apply bg-transparent p-0 text-stone-700;
+  @apply bg-transparent p-0 text-stone-700 dark:text-slate-100;
 }
 
 .prose .katex-display {
@@ -155,16 +165,16 @@
 }
 
 .prose :where(th):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-  @apply border border-slate-200 bg-slate-50 px-3 py-2 text-left font-medium;
+  @apply border border-slate-200 bg-slate-50 px-3 py-2 text-left font-medium dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100;
 }
 
 .prose :where(td):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-  @apply border border-slate-200 px-3 py-2 align-top;
+  @apply border border-slate-200 px-3 py-2 align-top dark:border-slate-700;
 }
 
 .prose :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
   quotes: none;
-  @apply my-5 rounded-r-xl border-l-4 border-indigo-500 bg-indigo-50 px-5 py-3 font-normal text-slate-800 not-italic;
+  @apply my-5 rounded-r-xl border-l-4 border-indigo-500 bg-indigo-50 px-5 py-3 font-normal text-slate-800 not-italic dark:border-indigo-400 dark:bg-indigo-950/40 dark:text-slate-100;
 }
 
 .prose :where(blockquote p):not(:where([class~="not-prose"], [class~="not-prose"] *))::before,
@@ -188,6 +198,36 @@
 .review-scroll::-webkit-scrollbar-thumb {
   background-color: var(--color-slate-300);
   border-radius: 999px;
+}
+
+.history-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-slate-300) transparent;
+}
+
+.history-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.history-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--color-slate-300);
+  border-radius: 999px;
+}
+
+.dark .history-scroll {
+  scrollbar-color: var(--color-slate-600) transparent;
+}
+
+.dark .history-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--color-slate-600);
+}
+
+.dark .history-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-slate-500);
 }
 
 @keyframes streaming-cursor-blink {
@@ -216,8 +256,23 @@
   animation: streaming-cursor-blink 1.05s steps(1, end) infinite;
 }
 
+.chat-caret {
+  display: inline-block;
+  width: 0.45em;
+  user-select: none;
+  vertical-align: baseline;
+}
+
+.chat-caret::after {
+  content: "|";
+  margin-left: 0.05em;
+  font-weight: 500;
+  animation: streaming-cursor-blink 1.05s steps(1, end) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .streaming-cursor::after {
+  .streaming-cursor::after,
+  .chat-caret::after {
     animation: none;
   }
 }

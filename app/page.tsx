@@ -6,9 +6,12 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { FileText, FileUp, Loader2, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Star, X } from "lucide-react";
+import { FileText, Loader2, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Star } from "lucide-react";
 
+import { FileUpload } from "@/components/FileUpload";
 import { HistoryList } from "@/components/HistoryList";
+import { MessageList } from "@/components/MessageList";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useHistory } from "@/hooks/use-history";
@@ -17,6 +20,7 @@ import { extractTextFromPDF } from "@/app/utils/pdf";
 import { extractTextFromPPTX } from "@/app/utils/pptx";
 
 type ReviewMode = "outline" | "quiz";
+type ReviewStyle = "normal" | "expert" | "exam";
 type UploadKind = "pdf" | "pptx";
 
 interface ChatMessage {
@@ -115,9 +119,16 @@ function findCursorParent(node: HastNode): HastNode | null {
 }
 
 const mathPlugins = [remarkMath, remarkGfm] as const;
-const katexPlugins = [rehypeKatex] as const;
 
-/** 把 \( \) / \[ \] 转成 $，并转义公式外的变量下划线，避免 I_D 被 Markdown 当成斜体。 */
+/** rehype-katex 会先强制 throwOnError: true，失败后再用 false 重绘。errorColor 决定失败时源码的颜色，默认是红色。 */
+const katexOptions = {
+  throwOnError: false,
+  errorColor: "currentColor",
+  strict: "ignore" as const,
+};
+const katexPlugin: [typeof rehypeKatex, typeof katexOptions] = [rehypeKatex, katexOptions];
+
+/** 把 \( \) / \[ \] 转成 $，隔开未闭合公式，并转义公式外的变量下划线。 */
 function normalizeLatexDelimiters(markdown: string) {
   return markdown
     .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
@@ -127,15 +138,63 @@ function normalizeLatexDelimiters(markdown: string) {
 
 function escapePlainTextUnderscores(text: string) {
   const withDollars = text
-    .replace(/\\\[([\s\S]+?)\\\]/g, (_match, expression: string) => `$$${expression}$$`)
+    .replace(/\\\[([\s\S]+?)\\\]/g, (_match, expression: string) => `\n$$\n${expression.trim()}\n$$\n`)
     .replace(/\\\(([\s\S]+?)\\\)/g, (_match, expression: string) => `$${expression}$`);
+  const balanced = escapeUnbalancedDollars(withDollars);
 
-  return withDollars
+  return balanced
     .split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$)/g)
     .map((part, index) =>
       index % 2 === 1 ? part : part.replace(/([A-Za-z0-9])_([A-Za-z0-9])/g, "$1\\_$2"),
     )
     .join("");
+}
+
+/** 未闭合的 $ 如果一路配到后文的标题或列表，会把排版整段吞进公式。这种开头改成普通文本。 */
+function escapeUnbalancedDollars(text: string) {
+  let output = "";
+  let index = 0;
+
+  while (index < text.length) {
+    if (text[index] !== "$") {
+      output += text[index];
+      index += 1;
+      continue;
+    }
+
+    if (text.startsWith("$$", index)) {
+      const close = text.indexOf("$$", index + 2);
+      const span = close === -1 ? "" : text.slice(index + 2, close);
+      if (close === -1 || /\n\s{0,3}#{1,6}\s/.test(span)) {
+        output += "\\$\\$";
+        index += 2;
+        continue;
+      }
+      output += text.slice(index, close + 2);
+      index = close + 2;
+      continue;
+    }
+
+    const close = findClosingSingleDollar(text, index + 1);
+    const span = close === -1 ? "" : text.slice(index + 1, close);
+    if (close === -1 || /\n\s*\n/.test(span) || /\n\s{0,3}(?:#{1,6}\s|[-*+]\s|\d+\.\s)/.test(span)) {
+      output += "\\$";
+      index += 1;
+      continue;
+    }
+    output += text.slice(index, close + 1);
+    index = close + 1;
+  }
+
+  return output;
+}
+
+function findClosingSingleDollar(text: string, from: number) {
+  for (let index = from; index < text.length; index += 1) {
+    if (text[index] !== "$" || text[index + 1] === "$" || text[index - 1] === "$") continue;
+    return index;
+  }
+  return -1;
 }
 
 function parseQuizQuestions(data: unknown): QuizQuestion[] {
@@ -170,26 +229,26 @@ function parseQuizQuestions(data: unknown): QuizQuestion[] {
 
 function optionButtonClass(letter: string, selected: string | undefined, answer: string) {
   const base =
-    "flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-all duration-300 disabled:cursor-default disabled:opacity-100";
+    "flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-all duration-300 disabled:cursor-default disabled:opacity-100 [&_.prose]:text-current!";
   if (!selected) {
-    return `${base} border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/70 active:scale-[0.99]`;
+    return `${base} border-slate-200 bg-gray-50 text-slate-900 hover:border-indigo-300 hover:bg-indigo-50/70 active:scale-[0.99] dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-100 dark:hover:bg-indigo-950/40`;
   }
   if (letter === answer) {
-    return `${base} border-emerald-400 bg-emerald-50 text-emerald-800`;
+    return `${base} border-green-300 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-400`;
   }
   if (letter === selected) {
-    return `${base} border-red-400 bg-red-50 text-red-700`;
+    return `${base} border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400`;
   }
-  return `${base} border-slate-200 bg-white text-slate-400`;
+  return `${base} border-slate-200 bg-gray-50 text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400`;
 }
 
 function letterBadgeClass(letter: string, selected: string | undefined, answer: string) {
   const base =
     "flex size-7 shrink-0 items-center justify-center rounded-lg text-xs font-semibold transition-colors duration-300";
-  if (!selected) return `${base} bg-slate-100 text-slate-600`;
+  if (!selected) return `${base} bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300`;
   if (letter === answer) return `${base} bg-emerald-500 text-white`;
   if (letter === selected) return `${base} bg-red-500 text-white`;
-  return `${base} bg-slate-100 text-slate-400`;
+  return `${base} bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400`;
 }
 
 function TutorChat({
@@ -205,74 +264,53 @@ function TutorChat({
   onDraftChange: (value: string) => void;
   onSend: () => void;
 }) {
-  const listRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const canSend = !loading && draft.trim().length > 0;
 
   useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    list.scrollTop = list.scrollHeight;
-  }, [messages, loading]);
+    const composer = composerRef.current;
+    if (!composer) return;
+    composer.style.height = "0px";
+    composer.style.height = `${Math.min(composer.scrollHeight, 128)}px`;
+  }, [draft]);
 
   return (
-    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg ring-0">
-      <div className="shrink-0 border-b border-slate-100 px-4 py-3">
-        <p className="text-sm font-medium text-slate-800">AI 助教</p>
-        <p className="text-xs text-slate-400">针对当前课件继续追问</p>
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg ring-0 dark:border-slate-800 dark:bg-slate-900">
+      <div className="shrink-0 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">AI 助教</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">针对当前课件继续追问</p>
       </div>
-      <div ref={listRef} className="review-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
-        {messages.length === 0 ? (
-          <p className="m-auto text-center text-sm text-slate-400">可以问助教：这个概念怎么考？</p>
-        ) : (
-          messages.map((message) => {
-            const mine = message.role === "user";
-            const streaming = !mine && loading && message.id === messages[messages.length - 1]?.id;
-            return (
-              <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-6 ${
-                    mine
-                      ? "rounded-br-md bg-indigo-600 text-white"
-                      : "rounded-bl-md border border-slate-100 bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  {mine ? (
-                    <p className="whitespace-pre-wrap">{message.content}</p>
-                  ) : message.content ? (
-                    <QuizMarkdown text={message.content} />
-                  ) : streaming ? (
-                    <span className="streaming-cursor" aria-hidden="true" />
-                  ) : null}
-                  {streaming && message.content ? (
-                    <span className="streaming-cursor" aria-hidden="true" />
-                  ) : null}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+      <MessageList messages={messages} loading={loading} />
       <form
-        className="flex shrink-0 items-center gap-2 border-t border-slate-100 p-3"
+        className="shrink-0 border-t border-slate-100 p-3 dark:border-slate-800"
         onSubmit={(event) => {
           event.preventDefault();
-          onSend();
+          if (canSend) onSend();
         }}
       >
-        <input
-          value={draft}
-          onChange={(event) => onDraftChange(event.target.value)}
-          placeholder="输入你的问题"
-          disabled={loading}
-          className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition-all duration-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
-        />
-        <Button
-          type="submit"
-          disabled={loading || !draft.trim()}
-          className="h-11 rounded-xl bg-indigo-600 px-4 text-white hover:bg-indigo-700 disabled:opacity-60"
-        >
-          {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-          发送
-        </Button>
+        <div className="flex items-end gap-1 rounded-2xl border border-slate-200 bg-white py-1 pr-1 pl-3 transition-colors focus-within:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:border-indigo-500">
+          <textarea
+            ref={composerRef}
+            value={draft}
+            rows={1}
+            onChange={(event) => onDraftChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              if (canSend) onSend();
+            }}
+            placeholder="输入你的问题"
+            className="max-h-32 min-h-10 min-w-0 flex-1 resize-none bg-transparent py-2 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
+          />
+          <button
+            type="submit"
+            disabled={!canSend}
+            aria-label="发送"
+            className="mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white transition-colors hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-700 dark:disabled:text-slate-500"
+          >
+            <Send className="size-4" />
+          </button>
+        </div>
       </form>
     </Card>
   );
@@ -284,13 +322,13 @@ function QuizMarkdown({ text, inline = false }: { text: string; inline?: boolean
     <Tag
       className={
         inline
-          ? "prose prose-slate inline max-w-none text-sm prose-p:my-0"
-          : "prose prose-slate max-w-none text-sm prose-p:my-1 prose-headings:my-2"
+          ? "prose prose-slate inline max-w-none text-sm prose-p:my-0 dark:prose-invert"
+          : "prose prose-slate max-w-none text-sm prose-p:my-1 prose-headings:my-2 dark:prose-invert"
       }
     >
       <ReactMarkdown
         remarkPlugins={[...mathPlugins]}
-        rehypePlugins={[...katexPlugins]}
+        rehypePlugins={[katexPlugin]}
         components={inline ? { p: ({ children }) => <>{children}</> } : undefined}
       >
         {normalizeLatexDelimiters(text)}
@@ -307,11 +345,11 @@ function AnswerReveal({ question, revealed }: { question: QuizQuestion; revealed
       }`}
     >
       <div className="overflow-hidden">
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950">
-          <p className="text-xs font-semibold text-emerald-700">标准答案</p>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">标准答案</p>
           <QuizMarkdown text={question.answer} />
-          <div className="mt-3 border-t border-emerald-200/80 pt-3">
-            <p className="text-xs font-semibold text-emerald-700">解析</p>
+          <div className="mt-3 border-t border-emerald-200/80 pt-3 dark:border-emerald-800/80">
+            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">解析</p>
             <QuizMarkdown text={question.explanation || "这道题没有附加解析。"} />
           </div>
         </div>
@@ -342,8 +380,8 @@ function QuizBoard({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-slate-700">互动刷题</p>
-        <p className="text-xs text-slate-400">
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">互动刷题</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           已核对 {checked}/{questions.length}
           {checked > 0 ? ` · 选择题答对 ${correct}` : ""}
         </p>
@@ -351,15 +389,15 @@ function QuizBoard({
       {questions.map((question, index) => {
         const selected = selectedAnswers[index];
         const revealed = Boolean(revealedAnswers[index]);
-        const fieldClass = `w-full rounded-xl border px-4 py-3 text-sm text-slate-800 outline-none transition-all duration-300 ${
+        const fieldClass = `w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all duration-300 ${
           revealed
-            ? "border-slate-200 bg-slate-50 text-slate-600"
-            : "border-slate-200 bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+            ? "border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400"
+            : "border-slate-200 bg-white text-slate-900 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-indigo-900"
         }`;
         return (
           <article
             key={`${index}-${question.question}`}
-            className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm transition-shadow duration-300 hover:shadow-md sm:p-5"
+            className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm transition-shadow duration-300 hover:shadow-md sm:p-5 dark:border-slate-800 dark:bg-slate-800/70"
           >
             <div className="flex items-start gap-3">
               <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-xs font-semibold text-white">
@@ -367,7 +405,7 @@ function QuizBoard({
               </span>
               <div className="min-w-0">
                 <p className="text-xs font-medium text-indigo-500">{QUIZ_TYPE_LABEL[question.type]}</p>
-                <h3 className="mt-1 text-sm font-medium leading-6 text-slate-800">
+                <h3 className="mt-1 text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
                   <QuizMarkdown text={question.question} inline />
                 </h3>
               </div>
@@ -420,7 +458,7 @@ function QuizBoard({
                   <button
                     type="button"
                     onClick={() => onReveal(index)}
-                    className="mt-3 rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm font-medium text-indigo-600 transition-all duration-300 hover:bg-indigo-50"
+                    className="mt-3 rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm font-medium text-indigo-600 transition-all duration-300 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
                   >
                     {question.type === "fill_blank" ? "核对答案" : "显示解法"}
                   </button>
@@ -434,8 +472,8 @@ function QuizBoard({
                 }`}
               >
                 <div className="overflow-hidden">
-                  <div className="rounded-xl border border-indigo-100 bg-indigo-50/80 px-4 py-3 text-sm leading-6 text-slate-700">
-                    <p className="text-xs font-medium text-indigo-600">
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50/80 px-4 py-3 text-sm leading-6 text-slate-900 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-slate-100">
+                    <p className="text-xs font-medium text-indigo-600 dark:text-indigo-300">
                       解析 · 正确答案 <QuizMarkdown text={question.answer} inline />
                     </p>
                     <QuizMarkdown text={question.explanation || "这道题没有附加解析。"} />
@@ -465,7 +503,7 @@ export default function Home() {
   const [quizCount, setQuizCount] = useState(1);
   const [outlineRecordId, setOutlineRecordId] = useState<string | null>(null);
   const [quizRecordId, setQuizRecordId] = useState<string | null>(null);
-  const { records, addRecord, toggleFavorite } = useHistory();
+  const { records, addRecord, toggleFavorite, removeRecord, clearRecords } = useHistory();
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<number, boolean>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -473,8 +511,9 @@ export default function Home() {
   const [chatLoading, setChatLoading] = useState(false);
   const [extractedText, setExtractedText] = useState("");
   const extractedTextRef = useRef("");
+  const chatRunId = useRef(0);
   const [mode, setMode] = useState<ReviewMode>("outline");
-  const [dragging, setDragging] = useState(false);
+  const [reviewStyle, setReviewStyle] = useState<ReviewStyle>("normal");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notice, setNotice] = useState("");
 
@@ -513,12 +552,18 @@ export default function Home() {
     setRevealedAnswers({});
     setExtractedText("");
     extractedTextRef.current = "";
+    resetChat();
+  }
+
+  function resetChat() {
+    chatRunId.current += 1;
     setMessages([]);
+    setChatDraft("");
+    setChatLoading(false);
   }
 
   function clearFile() {
     setFile(null);
-    setDragging(false);
     setNotice("");
     if (inputRef.current) inputRef.current.value = "";
   }
@@ -535,6 +580,30 @@ export default function Home() {
     setOutlineRecordId(null);
   }
 
+  function clearResultForRecord(id: string) {
+    if (outlineRecordId === id) {
+      setOutlineResult("");
+      setOutlineRecordId(null);
+    }
+    if (quizRecordId === id) {
+      setQuizResult([]);
+      setSelectedAnswers({});
+      setRevealedAnswers({});
+      setQuizRecordId(null);
+    }
+  }
+
+  function deleteHistory(id: string) {
+    removeRecord(id);
+    clearResultForRecord(id);
+  }
+
+  function clearAllHistory() {
+    const ids = records.map((record) => record.id);
+    clearRecords();
+    ids.forEach(clearResultForRecord);
+  }
+
   async function handleStart() {
     if (!file || generating) return;
     if (file.size > 20 * 1024 * 1024) {
@@ -544,6 +613,7 @@ export default function Home() {
 
     const id = ++runId.current;
     const activeMode = mode;
+    const activeStyle = reviewStyle;
     const attemptCount = activeMode === "quiz" ? quizCount : outlineCount;
     const sourceName = file.name;
     const previousOutline = outlineResult;
@@ -575,7 +645,7 @@ export default function Home() {
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, mode: activeMode, attemptCount }),
+        body: JSON.stringify({ text, mode: activeMode, attemptCount, reviewStyle: activeStyle }),
       });
       if (runId.current !== id) return;
       if (!response.ok || !response.body) {
@@ -637,6 +707,7 @@ export default function Home() {
   }
 
   function openHistory(record: { id: string; mode: ReviewMode; content: string }) {
+    resetChat();
     setMode(record.mode);
     if (record.mode === "outline") {
       setOutlineResult(record.content);
@@ -661,6 +732,8 @@ export default function Home() {
 
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", content: text };
     const assistantId = crypto.randomUUID();
+    const run = chatRunId.current + 1;
+    chatRunId.current = run;
     const history = [...messages, userMessage];
 
     setChatDraft("");
@@ -673,7 +746,7 @@ export default function Home() {
       frame = 0;
       const chunk = pendingRef.text;
       pendingRef.text = "";
-      if (!chunk) return;
+      if (!chunk || chatRunId.current !== run) return;
       setMessages((current) =>
         current.map((message) =>
           message.id === assistantId ? { ...message, content: message.content + chunk } : message,
@@ -686,6 +759,7 @@ export default function Home() {
       if (!frame) frame = requestAnimationFrame(flush);
     };
     const fail = (detail: string) => {
+      if (chatRunId.current !== run) return;
       setMessages((current) =>
         current.map((message) =>
           message.id === assistantId ? { ...message, content: message.content || detail } : message,
@@ -716,11 +790,12 @@ export default function Home() {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      while (true) {
+      while (chatRunId.current === run) {
         const { done, value } = await reader.read();
         if (done) break;
         append(decoder.decode(value, { stream: true }));
       }
+      if (chatRunId.current !== run) reader.cancel();
       append(decoder.decode());
       if (frame) cancelAnimationFrame(frame);
       flush();
@@ -728,6 +803,7 @@ export default function Home() {
       fail(error instanceof Error ? error.message : "发送失败");
     } finally {
       if (frame) cancelAnimationFrame(frame);
+      if (chatRunId.current !== run) return;
       flush();
       setChatLoading(false);
     }
@@ -740,38 +816,50 @@ export default function Home() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 md:h-screen md:overflow-hidden">
+    <div className="relative min-h-screen bg-slate-50 md:h-screen md:overflow-hidden dark:bg-slate-950">
+      {sidebarOpen ? null : (
+        <button
+          type="button"
+          aria-label="展开侧栏"
+          onClick={() => setSidebarOpen(true)}
+          className="absolute top-4 left-4 z-50 flex size-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-md transition-colors hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:text-indigo-300"
+        >
+          <PanelLeftOpen className="size-5" />
+        </button>
+      )}
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-8 py-10 sm:px-12 md:h-full md:min-h-0 md:overflow-hidden">
-        <header className="mb-8">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-800">
-            AI 课程复习百宝箱
-          </h1>
-          <p className="mt-2 text-base text-slate-500">
-            上传课件，生成清晰的复习大纲或测验
-          </p>
+        <header className="mb-8 flex shrink-0 items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+              AI 课程复习百宝箱
+            </h1>
+            <p className="mt-2 text-base text-slate-500 dark:text-slate-400">
+              上传课件，生成清晰的复习大纲或测验
+            </p>
+          </div>
+          <ThemeToggle />
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row md:gap-8">
+        <div className="flex min-h-0 w-full flex-1 flex-col items-stretch gap-4 md:h-[calc(100vh-11.25rem)] md:flex-row md:gap-8">
           <aside
-            className={`shrink-0 overflow-hidden transition-all duration-300 ease-in-out ${
-              sidebarOpen
-                ? "h-[calc(100vh-200px)] w-full md:w-80"
-                : "h-14 w-full md:h-[calc(100vh-200px)] md:w-14"
+            aria-hidden={!sidebarOpen}
+            className={`flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden transition-all duration-300 ease-in-out ${
+              sidebarOpen ? "h-full w-full md:w-80" : "h-0 w-0"
             }`}
           >
-          <Card className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg ring-0 md:w-80">
+          <Card className="flex h-full min-h-0 w-full flex-col gap-0 overflow-hidden rounded-2xl border border-slate-100 bg-white py-0 shadow-lg ring-0 md:w-80 dark:border-slate-800 dark:bg-slate-900">
             <div className="flex h-14 shrink-0 items-center gap-2 px-2">
               <button
                 type="button"
-                aria-label={sidebarOpen ? "收起侧栏" : "展开侧栏"}
+                aria-label="收起侧栏"
                 aria-expanded={sidebarOpen}
-                onClick={() => setSidebarOpen((open) => !open)}
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors duration-300 hover:bg-slate-100 hover:text-indigo-600"
+                onClick={() => setSidebarOpen(false)}
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors duration-300 hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-indigo-300"
               >
-                {sidebarOpen ? <PanelLeftClose className="size-5" /> : <PanelLeftOpen className="size-5" />}
+                <PanelLeftClose className="size-5" />
               </button>
               <span
-                className={`whitespace-nowrap text-sm font-medium text-slate-700 transition-opacity duration-300 ${
+                className={`whitespace-nowrap text-sm font-medium text-slate-900 transition-opacity duration-300 dark:text-slate-100 ${
                   sidebarOpen ? "opacity-100" : "opacity-0"
                 }`}
               >
@@ -780,96 +868,23 @@ export default function Home() {
             </div>
             <CardContent
               aria-hidden={!sidebarOpen}
-              className={`flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto transition-opacity duration-300 ${
+              className={`flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-4 pb-3 transition-opacity duration-300 ${
                 sidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"
               }`}
             >
-              <input
-                ref={inputRef}
-                type="file"
+              <div className="flex shrink-0 flex-col gap-4">
+              <FileUpload
+                file={file}
                 accept={ACCEPT}
-                className="hidden"
-                onChange={(event) => {
-                  chooseFile(event.target.files?.[0] ?? null);
-                  event.target.value = "";
-                }}
+                disabled={generating !== null}
+                inputRef={inputRef}
+                onFile={chooseFile}
+                onClear={clearFile}
               />
-              <div
-                aria-hidden={Boolean(file)}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  if (file) return;
-                  setDragging(true);
-                }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  setDragging(false);
-                  if (file) return;
-                  chooseFile(event.dataTransfer.files?.[0] ?? null);
-                }}
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                  file ? "pointer-events-none max-h-0 opacity-0" : "max-h-56 opacity-100"
-                }`}
-              >
-                <button
-                  type="button"
-                  disabled={Boolean(file)}
-                  onClick={() => inputRef.current?.click()}
-                  className={`flex w-full flex-col items-center gap-3 rounded-xl border border-dashed bg-white px-4 py-10 text-center transition-all duration-300 hover:border-indigo-400 hover:bg-slate-50 ${
-                    dragging ? "border-indigo-400 bg-slate-50" : "border-slate-300"
-                  }`}
-                >
-                  <span className="flex size-12 items-center justify-center rounded-full bg-white text-indigo-500 shadow-sm">
-                    <FileUp className="size-5" />
-                  </span>
-                  <span className="text-sm font-medium text-stone-800">
-                    拖拽文件到这里，或点击选择
-                  </span>
-                  <span className="text-xs text-stone-500">支持 PDF、PPTX</span>
-                </button>
-              </div>
-              <div
-                aria-hidden={!file}
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                  file ? "max-h-24 opacity-100" : "pointer-events-none max-h-0 opacity-0"
-                }`}
-              >
-                {file ? (
-                  <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-500 shadow-sm">
-                      <FileText className="size-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-700">{file.name}</p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          clearFile();
-                          inputRef.current?.click();
-                        }}
-                        disabled={generating !== null}
-                        className="text-xs text-indigo-600 transition-colors duration-300 hover:text-indigo-700 disabled:text-slate-400"
-                      >
-                        重新上传
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label="移除文件"
-                      onClick={clearFile}
-                      disabled={generating !== null}
-                      className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-all duration-300 hover:bg-white hover:text-slate-700 disabled:opacity-40"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              {notice ? <p className="text-xs text-red-600">{notice}</p> : null}
+              {notice ? <p className="text-xs text-red-600 dark:text-red-400">{notice}</p> : null}
 
               <fieldset>
-                <legend className="text-sm font-medium text-stone-800">复习模式</legend>
+                <legend className="text-sm font-medium text-slate-900 dark:text-slate-100">复习模式</legend>
                 <div className="mt-2 grid gap-2">
                   {(
                     [
@@ -879,10 +894,10 @@ export default function Home() {
                   ).map(([value, label]) => (
                     <label
                       key={value}
-                      className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm text-stone-700 transition-all duration-300 ${
+                      className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm text-slate-900 transition-all duration-300 dark:text-slate-100 ${
                         mode === value
-                          ? "border-indigo-300 bg-indigo-50"
-                          : "border-stone-200 bg-white hover:border-indigo-300"
+                          ? "border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/40"
+                          : "border-stone-200 bg-white hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-600"
                       }`}
                     >
                       <input
@@ -899,6 +914,37 @@ export default function Home() {
                 </div>
               </fieldset>
 
+              <div>
+                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">复习风格</p>
+                <div className="mt-2 grid grid-cols-3 gap-1.5" role="group" aria-label="复习风格">
+                  {(
+                    [
+                      ["normal", "📖", "基础巩固"],
+                      ["expert", "🎓", "深度进阶"],
+                      ["exam", "🎯", "考前押题"],
+                    ] as const
+                  ).map(([value, emoji, label]) => {
+                    const selected = reviewStyle === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => setReviewStyle(value)}
+                        className={`flex flex-col items-center gap-0.5 rounded-lg border px-1 py-2 text-xs font-medium transition-colors ${
+                          selected
+                            ? "border-indigo-600 bg-indigo-600 text-white"
+                            : "border-slate-200 bg-transparent text-slate-600 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-indigo-600"
+                        }`}
+                      >
+                        <span aria-hidden="true">{emoji}</span>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <Button
                 type="button"
                 size="lg"
@@ -907,7 +953,7 @@ export default function Home() {
                 className={`h-auto min-h-11 w-full shrink whitespace-normal! rounded-xl px-3 py-2.5 text-center shadow-sm transition-all duration-300 ${
                   file
                     ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:scale-[1.02] hover:from-indigo-600 hover:to-purple-600 disabled:opacity-80!"
-                    : "bg-slate-200! text-slate-400! shadow-none hover:scale-100 disabled:bg-slate-200! disabled:text-slate-400! disabled:opacity-100!"
+                    : "bg-slate-200! text-slate-500! shadow-none hover:scale-100 disabled:bg-slate-200! disabled:text-slate-500! disabled:opacity-100! dark:bg-slate-800! dark:text-slate-400! dark:disabled:bg-slate-800! dark:disabled:text-slate-400!"
                 }`}
               >
                 {generating ? (
@@ -927,36 +973,39 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={clearCurrentResult}
-                  className="text-xs text-slate-400 transition-colors duration-300 hover:text-slate-600"
+                  className="text-xs text-slate-500 transition-colors duration-300 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200"
                 >
                   清空当前结果
                 </button>
               ) : null}
+              </div>
               <HistoryList
                 records={records}
                 activeId={mode === "quiz" ? quizRecordId : outlineRecordId}
                 onSelect={openHistory}
                 onToggleFavorite={toggleFavorite}
+                onDelete={deleteHistory}
+                onClearAll={clearAllHistory}
               />
             </CardContent>
           </Card>
           </aside>
 
-          <div className="h-[calc(100vh-200px)] min-h-0 w-full min-w-0 flex-1">
+          <div className="h-[calc(100vh-11.25rem)] min-h-0 w-full min-w-0 flex-1 md:h-full">
           <Group orientation="vertical" className="h-full min-h-0">
           <Panel id="review" defaultSize="60%" minSize="20%" className="min-h-0" style={{ overflow: "hidden" }}>
-          <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg ring-0">
+          <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg ring-0 dark:border-slate-800 dark:bg-slate-900">
             {visibleRecord && showFavorite ? (
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5">
-                <p className="min-w-0 truncate text-sm text-slate-600">{visibleRecord.fileName}</p>
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
+                <p className="min-w-0 truncate text-sm text-slate-600 dark:text-slate-300">{visibleRecord.fileName}</p>
                 <button
                   type="button"
                   aria-pressed={visibleRecord.isFavorite}
                   onClick={() => toggleFavorite(visibleRecord.id)}
                   className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm transition-colors ${
                     visibleRecord.isFavorite
-                      ? "bg-amber-50 text-amber-600"
-                      : "bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600"
+                      ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"
+                      : "bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
                   }`}
                 >
                   <Star className={`size-4 ${visibleRecord.isFavorite ? "fill-amber-400 text-amber-400" : ""}`} />
@@ -996,40 +1045,40 @@ export default function Home() {
                     />
                   </div>
                 ) : generating === "quiz" ? (
-                  <div className="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
+                  <div className="flex flex-1 flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
                     <Loader2 className="size-8 animate-spin text-indigo-500" />
                     <p className="text-sm">正在生成测验…</p>
                   </div>
                 ) : (
                   <div className="flex flex-1 flex-col items-center justify-center gap-4">
-                    <FileText className="size-16 text-slate-300" strokeWidth={1.25} />
-                    <p className="text-sm text-slate-400">
+                    <FileText className="size-16 text-slate-300 dark:text-slate-600" strokeWidth={1.25} />
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
                       {file ? "点击「开始复习」生成测验" : "请上传文档开始"}
                     </p>
                   </div>
                 )
               ) : outlineResult ? (
-                <div className="prose prose-slate lg:prose-lg max-w-none">
+                <div className="prose prose-slate max-w-none dark:prose-invert lg:prose-lg">
                   <ReactMarkdown
-                    remarkPlugins={[...mathPlugins]}
+                    remarkPlugins={[remarkMath, remarkGfm]}
                     rehypePlugins={
                       generating === "outline"
-                        ? [...katexPlugins, rehypeStreamingCursor]
-                        : [...katexPlugins]
+                        ? [katexPlugin, rehypeStreamingCursor]
+                        : [katexPlugin]
                     }
                   >
                     {normalizeLatexDelimiters(outlineResult)}
                   </ReactMarkdown>
                 </div>
               ) : generating === "outline" ? (
-                <div className="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
                   <Loader2 className="size-8 animate-spin text-indigo-500" />
                   <p className="text-sm">正在读取课件并生成内容…</p>
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center gap-4">
-                  <FileText className="size-16 text-slate-300" strokeWidth={1.25} />
-                  <p className="text-sm text-slate-400">
+                  <FileText className="size-16 text-slate-300 dark:text-slate-600" strokeWidth={1.25} />
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
                     {file ? "点击「开始复习」生成大纲" : "请上传文档开始"}
                   </p>
                 </div>
@@ -1038,7 +1087,7 @@ export default function Home() {
           </Card>
           </Panel>
           <Separator aria-label="调整刷题和助教高度" className="group flex h-3 cursor-row-resize items-center outline-none">
-            <span className="h-px w-full rounded-full bg-slate-300 transition-all duration-200 group-hover:h-1.5 group-hover:bg-indigo-400 group-data-[separator=active]:h-1.5 group-data-[separator=active]:bg-indigo-500" />
+            <span className="h-px w-full rounded-full bg-slate-300 transition-all duration-200 group-hover:h-1.5 group-hover:bg-indigo-400 group-data-[separator=active]:h-1.5 group-data-[separator=active]:bg-indigo-500 dark:bg-slate-700" />
           </Separator>
           <Panel id="tutor" defaultSize="40%" minSize="18%" className="min-h-0" style={{ overflow: "hidden" }}>
           <TutorChat
