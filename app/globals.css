@@ -154,6 +154,20 @@
   @apply bg-transparent p-0 text-stone-700 dark:text-slate-100;
 }
 
+p code,
+li code,
+.prose p code,
+.prose li code {
+  @apply rounded bg-indigo-50 px-1.5 py-0.5 font-mono text-[0.9em] font-medium text-indigo-700 dark:bg-slate-800 dark:text-indigo-300;
+}
+
+.prose p code::before,
+.prose p code::after,
+.prose li code::before,
+.prose li code::after {
+  content: none;
+}
+
 .prose .katex-display {
   overflow-x: auto;
   overflow-y: hidden;

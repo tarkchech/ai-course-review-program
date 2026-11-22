@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
 import { Copy } from "lucide-react";
+
+import { MarkdownContent } from "@/components/CodeBlock";
 
 export type MessageRole = "user" | "assistant";
 
@@ -176,15 +175,13 @@ export function MessageBubble({
       {mine ? (
         <p className="whitespace-pre-wrap break-words">{content}</p>
       ) : (
-        <div className="prose prose-slate max-w-none text-sm break-words text-gray-800 prose-p:my-1 dark:prose-invert dark:text-slate-200">
-          <ReactMarkdown
-            remarkPlugins={[remarkMath, remarkGfm]}
+        <div className="prose prose-slate min-w-0 max-w-none text-sm break-words text-gray-800 prose-p:my-1 dark:prose-invert dark:text-slate-200">
+          <MarkdownContent
+            text={normalizeLatexDelimiters(content)}
             rehypePlugins={
               streaming ? [[rehypeKatex, katexOptions], rehypeChatCaret] : [[rehypeKatex, katexOptions]]
             }
-          >
-            {normalizeLatexDelimiters(content)}
-          </ReactMarkdown>
+          />
         </div>
       )}
       {mine || streaming || !content ? null : (

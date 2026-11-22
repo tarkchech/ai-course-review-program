@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import { useTheme } from "next-themes";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import rehypeKatex from "rehype-katex";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import { FileText, Loader2, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Star } from "lucide-react";
+import { FileText, Loader2, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Star } from "lucide-react";
 
+import { MarkdownContent } from "@/components/CodeBlock";
 import { FileUpload } from "@/components/FileUpload";
 import { HistoryList } from "@/components/HistoryList";
 import { MessageList } from "@/components/MessageList";
@@ -31,6 +30,7 @@ interface ChatMessage {
 
 interface QuizQuestion {
   type: "choice" | "fill_blank" | "calculation";
+  isCoding: boolean;
   question: string;
   options: string[] | null;
   answer: string;
@@ -117,8 +117,6 @@ function findCursorParent(node: HastNode): HastNode | null {
 
   return null;
 }
-
-const mathPlugins = [remarkMath, remarkGfm] as const;
 
 /** rehype-katex 会先强制 throwOnError: true，失败后再用 false 重绘。errorColor 决定失败时源码的颜色，默认是红色。 */
 const katexOptions = {
@@ -223,7 +221,7 @@ function parseQuizQuestions(data: unknown): QuizQuestion[] {
       throw new Error(`第 ${index + 1} 题缺少 question、options 或 answer`);
     }
 
-    return { type, question, options, answer, explanation };
+    return { type, isCoding: record.isCoding === true, question, options, answer, explanation };
   });
 }
 
@@ -323,16 +321,14 @@ function QuizMarkdown({ text, inline = false }: { text: string; inline?: boolean
       className={
         inline
           ? "prose prose-slate inline max-w-none text-sm prose-p:my-0 dark:prose-invert"
-          : "prose prose-slate max-w-none text-sm prose-p:my-1 prose-headings:my-2 dark:prose-invert"
+          : "prose prose-slate max-w-none overflow-x-auto text-sm prose-p:my-1 prose-headings:my-2 dark:prose-invert"
       }
     >
-      <ReactMarkdown
-        remarkPlugins={[...mathPlugins]}
+      <MarkdownContent
+        text={normalizeLatexDelimiters(text)}
         rehypePlugins={[katexPlugin]}
-        components={inline ? { p: ({ children }) => <>{children}</> } : undefined}
-      >
-        {normalizeLatexDelimiters(text)}
-      </ReactMarkdown>
+        unwrapParagraph={inline}
+      />
     </Tag>
   );
 }
@@ -352,6 +348,11 @@ function AnswerReveal({ question, revealed }: { question: QuizQuestion; revealed
             <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">解析</p>
             <QuizMarkdown text={question.explanation || "这道题没有附加解析。"} />
           </div>
+          {question.type === "calculation" ? (
+            <p className="mt-3 text-xs text-emerald-700/80 dark:text-emerald-300/80">
+              💡 您可以在上方草稿区继续修改推导
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -371,6 +372,8 @@ function QuizBoard({
   onSelect: (index: number, letter: string) => void;
   onReveal: (index: number) => void;
 }) {
+  const { resolvedTheme } = useTheme();
+  const dark = resolvedTheme === "dark";
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const checked = Object.keys(revealedAnswers).length;
   const correct = questions.filter(
@@ -397,7 +400,7 @@ function QuizBoard({
         return (
           <article
             key={`${index}-${question.question}`}
-            className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm transition-shadow duration-300 hover:shadow-md sm:p-5 dark:border-slate-800 dark:bg-slate-800/70"
+            className="min-w-0 rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm transition-shadow duration-300 hover:shadow-md sm:p-5 dark:border-slate-800 dark:bg-slate-800/70"
           >
             <div className="flex items-start gap-3">
               <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-xs font-semibold text-white">
@@ -405,9 +408,9 @@ function QuizBoard({
               </span>
               <div className="min-w-0">
                 <p className="text-xs font-medium text-indigo-500">{QUIZ_TYPE_LABEL[question.type]}</p>
-                <h3 className="mt-1 text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
-                  <QuizMarkdown text={question.question} inline />
-                </h3>
+                <div className="prose prose-slate dark:prose-invert mt-1 min-w-0 max-w-none overflow-x-auto text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
+                  <QuizMarkdown text={question.question} />
+                </div>
               </div>
             </div>
             {question.type === "choice" ? (
@@ -442,16 +445,65 @@ function QuizBoard({
                     placeholder="在这里填写答案"
                     className={fieldClass}
                   />
+                ) : question.isCoding ? (
+                  <div
+                    className={`overflow-hidden rounded-xl border ${
+                      dark
+                        ? "border-[#3c3c3c] bg-[#1e1e1e]"
+                        : "border-gray-200 bg-[#f8f9fa] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]"
+                    }`}
+                  >
+                    <div
+                      className={`flex items-center gap-2 border-b px-3 py-2 ${
+                        dark
+                          ? "border-[#3c3c3c] bg-[#2d2d2d] text-gray-300"
+                          : "border-gray-200 bg-[#e9ecef] text-gray-700 dark:border-[#3c3c3c] dark:bg-[#2d2d2d] dark:text-gray-300"
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5" aria-hidden="true">
+                        <span className="size-2.5 rounded-full bg-red-500" />
+                        <span className="size-2.5 rounded-full bg-amber-400" />
+                        <span className="size-2.5 rounded-full bg-emerald-500" />
+                      </span>
+                      <span className="text-xs">代码草稿区</span>
+                    </div>
+                    <textarea
+                      value={drafts[index] ?? ""}
+                      onChange={(event) =>
+                        setDrafts((current) => ({ ...current, [index]: event.target.value }))
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key !== "Tab") return;
+                        event.preventDefault();
+                        const target = event.currentTarget;
+                        const start = target.selectionStart ?? 0;
+                        const end = target.selectionEnd ?? 0;
+                        const indent = "    ";
+                        const next = `${target.value.slice(0, start)}${indent}${target.value.slice(end)}`;
+                        setDrafts((current) => ({ ...current, [index]: next }));
+                        requestAnimationFrame(() => {
+                          target.selectionStart = start + indent.length;
+                          target.selectionEnd = start + indent.length;
+                        });
+                      }}
+                      placeholder="可以在这里编写代码草稿"
+                      spellCheck={false}
+                      className={`min-h-[200px] w-full resize-y border-0 px-4 py-3 font-mono text-sm outline-none focus:outline-none ${
+                        dark
+                          ? "bg-[#1e1e1e] text-white placeholder:text-slate-500"
+                          : "bg-[#f8f9fa] text-black placeholder:text-slate-400 dark:bg-[#1e1e1e] dark:text-white dark:placeholder:text-slate-500"
+                      }`}
+                    />
+                  </div>
                 ) : (
                   <textarea
                     value={drafts[index] ?? ""}
-                    readOnly={revealed}
-                    rows={4}
+                    rows={5}
                     onChange={(event) =>
                       setDrafts((current) => ({ ...current, [index]: event.target.value }))
                     }
                     placeholder="可以在这里打草稿，不必填写"
-                    className={`${fieldClass} resize-y`}
+                    className="min-h-32 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   />
                 )}
                 {revealed ? null : (
@@ -515,6 +567,7 @@ export default function Home() {
   const [mode, setMode] = useState<ReviewMode>("outline");
   const [reviewStyle, setReviewStyle] = useState<ReviewStyle>("normal");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -528,6 +581,15 @@ export default function Home() {
     if (!pane || generating !== "outline" || mode !== "outline" || !stickToBottom.current) return;
     pane.scrollTop = pane.scrollHeight;
   }, [outlineResult, generating, mode]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsFullscreen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isFullscreen]);
 
   function chooseFile(next: File | null) {
     if (!next) return;
@@ -817,7 +879,7 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen bg-slate-50 md:h-screen md:overflow-hidden dark:bg-slate-950">
-      {sidebarOpen ? null : (
+      {sidebarOpen || isFullscreen ? null : (
         <button
           type="button"
           aria-label="展开侧栏"
@@ -842,9 +904,9 @@ export default function Home() {
 
         <div className="flex min-h-0 w-full flex-1 flex-col items-stretch gap-4 md:h-[calc(100vh-11.25rem)] md:flex-row md:gap-8">
           <aside
-            aria-hidden={!sidebarOpen}
+            aria-hidden={!sidebarOpen || isFullscreen}
             className={`flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden transition-all duration-300 ease-in-out ${
-              sidebarOpen ? "h-full w-full md:w-80" : "h-0 w-0"
+              isFullscreen ? "hidden" : sidebarOpen ? "h-full w-full md:w-80" : "h-0 w-0"
             }`}
           >
           <Card className="flex h-full min-h-0 w-full flex-col gap-0 overflow-hidden rounded-2xl border border-slate-100 bg-white py-0 shadow-lg ring-0 md:w-80 dark:border-slate-800 dark:bg-slate-900">
@@ -991,28 +1053,47 @@ export default function Home() {
           </Card>
           </aside>
 
-          <div className="h-[calc(100vh-11.25rem)] min-h-0 w-full min-w-0 flex-1 md:h-full">
-          <Group orientation="vertical" className="h-full min-h-0">
+          <div
+            className={
+              isFullscreen
+                ? "fixed inset-0 z-[100] flex min-h-0 flex-col overflow-y-auto bg-slate-50 p-4 md:p-8 dark:bg-slate-950"
+                : "h-[calc(100vh-11.25rem)] min-h-0 w-full min-w-0 flex-1 md:h-full"
+            }
+          >
+          <Group orientation="vertical" className="h-full min-h-0 flex-1">
           <Panel id="review" defaultSize="60%" minSize="20%" className="min-h-0" style={{ overflow: "hidden" }}>
           <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg ring-0 dark:border-slate-800 dark:bg-slate-900">
-            {visibleRecord && showFavorite ? (
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
-                <p className="min-w-0 truncate text-sm text-slate-600 dark:text-slate-300">{visibleRecord.fileName}</p>
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
+              <p className="min-w-0 truncate text-sm text-slate-600 dark:text-slate-300">
+                {visibleRecord && showFavorite ? visibleRecord.fileName : "复习结果"}
+              </p>
+              <div className="flex shrink-0 items-center gap-2">
+                {visibleRecord && showFavorite ? (
+                  <button
+                    type="button"
+                    aria-pressed={visibleRecord.isFavorite}
+                    onClick={() => toggleFavorite(visibleRecord.id)}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm transition-colors ${
+                      visibleRecord.isFavorite
+                        ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"
+                        : "bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
+                    }`}
+                  >
+                    <Star className={`size-4 ${visibleRecord.isFavorite ? "fill-amber-400 text-amber-400" : ""}`} />
+                    {visibleRecord.isFavorite ? "取消收藏" : "收藏"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  aria-pressed={visibleRecord.isFavorite}
-                  onClick={() => toggleFavorite(visibleRecord.id)}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm transition-colors ${
-                    visibleRecord.isFavorite
-                      ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"
-                      : "bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
-                  }`}
+                  aria-pressed={isFullscreen}
+                  aria-label={isFullscreen ? "退出全屏" : "全屏"}
+                  onClick={() => setIsFullscreen((current) => !current)}
+                  className="flex size-9 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-indigo-300"
                 >
-                  <Star className={`size-4 ${visibleRecord.isFavorite ? "fill-amber-400 text-amber-400" : ""}`} />
-                  {visibleRecord.isFavorite ? "取消收藏" : "收藏"}
+                  {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
                 </button>
               </div>
-            ) : null}
+            </div>
             <CardContent
               ref={reviewRef}
               onScroll={(event) => {
@@ -1059,16 +1140,12 @@ export default function Home() {
                 )
               ) : outlineResult ? (
                 <div className="prose prose-slate max-w-none dark:prose-invert lg:prose-lg">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkMath, remarkGfm]}
+                  <MarkdownContent
+                    text={normalizeLatexDelimiters(outlineResult)}
                     rehypePlugins={
-                      generating === "outline"
-                        ? [katexPlugin, rehypeStreamingCursor]
-                        : [katexPlugin]
+                      generating === "outline" ? [katexPlugin, rehypeStreamingCursor] : [katexPlugin]
                     }
-                  >
-                    {normalizeLatexDelimiters(outlineResult)}
-                  </ReactMarkdown>
+                  />
                 </div>
               ) : generating === "outline" ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
