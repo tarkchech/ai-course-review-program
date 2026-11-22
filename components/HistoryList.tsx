@@ -40,7 +40,7 @@ export function HistoryList({
   const visible = filter === "favorite" ? records.filter((record) => record.isFavorite) : records;
 
   return (
-    <section className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden border-t border-slate-100 pt-3 dark:border-slate-800">
+    <section className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden border-t border-slate-300 pt-3 dark:border-slate-800">
       <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
         <p className="text-sm font-medium text-slate-900 dark:text-slate-100">历史记录</p>
         <div className="flex items-center gap-2">
@@ -59,7 +59,7 @@ export function HistoryList({
           <span className="text-xs text-slate-500 dark:text-slate-400">{records.length}</span>
         </div>
       </div>
-      <div className="grid shrink-0 grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+      <div className="grid shrink-0 grid-cols-2 gap-1 rounded-xl bg-slate-200 p-1 dark:bg-slate-800">
         {(
           [
             ["all", "全部记录"],

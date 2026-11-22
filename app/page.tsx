@@ -229,7 +229,7 @@ function optionButtonClass(letter: string, selected: string | undefined, answer:
   const base =
     "flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-all duration-300 disabled:cursor-default disabled:opacity-100 [&_.prose]:text-current!";
   if (!selected) {
-    return `${base} border-slate-200 bg-gray-50 text-slate-900 hover:border-indigo-300 hover:bg-indigo-50/70 active:scale-[0.99] dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-100 dark:hover:bg-indigo-950/40`;
+    return `${base} border-slate-300 bg-white text-slate-900 hover:border-indigo-300 hover:bg-indigo-50/70 active:scale-[0.99] dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-100 dark:hover:bg-indigo-950/40`;
   }
   if (letter === answer) {
     return `${base} border-green-300 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-400`;
@@ -237,7 +237,7 @@ function optionButtonClass(letter: string, selected: string | undefined, answer:
   if (letter === selected) {
     return `${base} border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400`;
   }
-  return `${base} border-slate-200 bg-gray-50 text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400`;
+  return `${base} border-slate-300 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400`;
 }
 
 function letterBadgeClass(letter: string, selected: string | undefined, answer: string) {
@@ -273,20 +273,20 @@ function TutorChat({
   }, [draft]);
 
   return (
-    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg ring-0 dark:border-slate-800 dark:bg-slate-900">
-      <div className="shrink-0 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.12)] ring-0 dark:border-slate-800 dark:bg-slate-900 dark:shadow-lg">
+      <div className="shrink-0 border-b border-slate-300 px-4 py-3 dark:border-slate-800">
         <p className="text-sm font-medium text-slate-900 dark:text-slate-100">AI 助教</p>
         <p className="text-xs text-slate-500 dark:text-slate-400">针对当前课件继续追问</p>
       </div>
       <MessageList messages={messages} loading={loading} />
       <form
-        className="shrink-0 border-t border-slate-100 p-3 dark:border-slate-800"
+        className="shrink-0 border-t border-slate-300 p-3 dark:border-slate-800"
         onSubmit={(event) => {
           event.preventDefault();
           if (canSend) onSend();
         }}
       >
-        <div className="flex items-end gap-1 rounded-2xl border border-slate-200 bg-white py-1 pr-1 pl-3 transition-colors focus-within:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:border-indigo-500">
+        <div className="flex items-end gap-1 rounded-2xl border border-slate-300 bg-slate-100 py-1 pr-1 pl-3 transition-colors focus-within:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:border-indigo-500">
           <textarea
             ref={composerRef}
             value={draft}
@@ -394,13 +394,13 @@ function QuizBoard({
         const revealed = Boolean(revealedAnswers[index]);
         const fieldClass = `w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all duration-300 ${
           revealed
-            ? "border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400"
-            : "border-slate-200 bg-white text-slate-900 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-indigo-900"
+            ? "border-slate-300 bg-slate-100 text-slate-500 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400"
+            : "border-slate-300 bg-slate-100 text-slate-900 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-indigo-900"
         }`;
         return (
           <article
             key={`${index}-${question.question}`}
-            className="min-w-0 rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm transition-shadow duration-300 hover:shadow-md sm:p-5 dark:border-slate-800 dark:bg-slate-800/70"
+            className="min-w-0 rounded-2xl border border-slate-300 bg-slate-100 p-4 shadow-sm transition-shadow duration-300 hover:shadow-md sm:p-5 dark:border-slate-800 dark:bg-slate-800/70"
           >
             <div className="flex items-start gap-3">
               <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-xs font-semibold text-white">
@@ -503,7 +503,7 @@ function QuizBoard({
                       setDrafts((current) => ({ ...current, [index]: event.target.value }))
                     }
                     placeholder="可以在这里打草稿，不必填写"
-                    className="min-h-32 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    className="min-h-32 w-full resize-y rounded-xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   />
                 )}
                 {revealed ? null : (
@@ -878,13 +878,13 @@ export default function Home() {
   );
 
   return (
-    <div className="relative min-h-screen bg-slate-50 md:h-screen md:overflow-hidden dark:bg-slate-950">
+    <div className="relative min-h-screen bg-slate-200 md:h-screen md:overflow-hidden dark:bg-slate-950">
       {sidebarOpen || isFullscreen ? null : (
         <button
           type="button"
           aria-label="展开侧栏"
           onClick={() => setSidebarOpen(true)}
-          className="absolute top-4 left-4 z-50 flex size-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-md transition-colors hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:text-indigo-300"
+          className="absolute top-4 left-4 z-50 flex size-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 shadow-md transition-colors hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:text-indigo-300"
         >
           <PanelLeftOpen className="size-5" />
         </button>
@@ -909,7 +909,7 @@ export default function Home() {
               isFullscreen ? "hidden" : sidebarOpen ? "h-full w-full md:w-80" : "h-0 w-0"
             }`}
           >
-          <Card className="flex h-full min-h-0 w-full flex-col gap-0 overflow-hidden rounded-2xl border border-slate-100 bg-white py-0 shadow-lg ring-0 md:w-80 dark:border-slate-800 dark:bg-slate-900">
+          <Card className="flex h-full min-h-0 w-full flex-col gap-0 overflow-hidden rounded-2xl border border-slate-300 bg-white py-0 shadow-[0_8px_24px_rgba(15,23,42,0.12)] ring-0 md:w-80 dark:border-slate-800 dark:bg-slate-900 dark:shadow-lg">
             <div className="flex h-14 shrink-0 items-center gap-2 px-2">
               <button
                 type="button"
@@ -959,7 +959,7 @@ export default function Home() {
                       className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm text-slate-900 transition-all duration-300 dark:text-slate-100 ${
                         mode === value
                           ? "border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/40"
-                          : "border-stone-200 bg-white hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-600"
+                          : "border-slate-300 bg-slate-100 hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-600"
                       }`}
                     >
                       <input
@@ -996,7 +996,7 @@ export default function Home() {
                         className={`flex flex-col items-center gap-0.5 rounded-lg border px-1 py-2 text-xs font-medium transition-colors ${
                           selected
                             ? "border-indigo-600 bg-indigo-600 text-white"
-                            : "border-slate-200 bg-transparent text-slate-600 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-indigo-600"
+                            : "border-slate-300 bg-slate-100 text-slate-600 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-600"
                         }`}
                       >
                         <span aria-hidden="true">{emoji}</span>
@@ -1056,14 +1056,14 @@ export default function Home() {
           <div
             className={
               isFullscreen
-                ? "fixed inset-0 z-[100] flex min-h-0 flex-col overflow-y-auto bg-slate-50 p-4 md:p-8 dark:bg-slate-950"
+                ? "fixed inset-0 z-[100] flex min-h-0 flex-col overflow-y-auto bg-slate-200 p-4 md:p-8 dark:bg-slate-950"
                 : "h-[calc(100vh-11.25rem)] min-h-0 w-full min-w-0 flex-1 md:h-full"
             }
           >
           <Group orientation="vertical" className="h-full min-h-0 flex-1">
           <Panel id="review" defaultSize="60%" minSize="20%" className="min-h-0" style={{ overflow: "hidden" }}>
-          <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg ring-0 dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
+          <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.12)] ring-0 dark:border-slate-800 dark:bg-slate-900 dark:shadow-lg">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-300 px-4 py-2.5 dark:border-slate-800">
               <p className="min-w-0 truncate text-sm text-slate-600 dark:text-slate-300">
                 {visibleRecord && showFavorite ? visibleRecord.fileName : "复习结果"}
               </p>
@@ -1076,7 +1076,7 @@ export default function Home() {
                     className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm transition-colors ${
                       visibleRecord.isFavorite
                         ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"
-                        : "bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
+                        : "bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
                     }`}
                   >
                     <Star className={`size-4 ${visibleRecord.isFavorite ? "fill-amber-400 text-amber-400" : ""}`} />
@@ -1088,7 +1088,7 @@ export default function Home() {
                   aria-pressed={isFullscreen}
                   aria-label={isFullscreen ? "退出全屏" : "全屏"}
                   onClick={() => setIsFullscreen((current) => !current)}
-                  className="flex size-9 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-indigo-300"
+                  className="flex size-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-indigo-300"
                 >
                   {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
                 </button>

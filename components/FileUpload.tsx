@@ -33,7 +33,7 @@ export function FileUpload({
         }}
       />
       {file ? (
-        <div className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 dark:border-slate-700 dark:bg-slate-800">
+        <div className="flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-slate-100 px-2.5 dark:border-slate-700 dark:bg-slate-800">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-500 dark:bg-slate-900 dark:text-indigo-300">
             <FileText className="size-4" />
           </span>
@@ -64,8 +64,8 @@ export function FileUpload({
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className={`flex w-full flex-col items-center gap-3 rounded-xl border border-dashed bg-white px-4 py-10 text-center transition-colors hover:border-indigo-400 hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 ${
-              dragging ? "border-indigo-400 bg-slate-50 dark:bg-slate-800" : "border-slate-300 dark:border-slate-700"
+            className={`flex w-full flex-col items-center gap-3 rounded-xl border border-dashed bg-slate-100 px-4 py-10 text-center transition-colors hover:border-indigo-400 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 ${
+              dragging ? "border-indigo-400 bg-slate-200 dark:bg-slate-800" : "border-slate-400 dark:border-slate-700"
             }`}
           >
             <span className="flex size-12 items-center justify-center rounded-full bg-white text-indigo-500 shadow-sm dark:bg-slate-800 dark:text-indigo-300">
